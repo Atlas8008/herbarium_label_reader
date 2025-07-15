@@ -1,0 +1,27 @@
+image_list: data/image_list.txt
+output_dir: data/output
+llm:
+  model_name: "gemini-pro-vision"
+  max_new_tokens: 512
+  temperature: 0.2
+  prompt: "
+    You are an expert in identifying and extracting information from herbarium labels.
+    Your task is to read the text from the provided images and extract relevant information such as:
+    - Scientific name
+    - Common name
+    - Collection date
+    - Collector's name
+    - Location
+    - Notes
+
+    Please provide the extracted information in a structured format as linewise key value pairs.
+    If any information is not available, leave it blank.
+    "
+preprocessors:
+  grounding_dino:
+    model_name: "IDEA-Research/grounding-dino-tiny"
+    enabled: false
+    box_threshold: 0.25
+    text_threshold: 0.3
+    prompt: "Identify the herbarium label in the image"
+    device: "cuda" # Use "cuda" for GPU or "cpu" for CPU

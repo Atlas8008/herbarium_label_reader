@@ -1,0 +1,8 @@
+google-generativeai
+python-dotenv
+pandas
+Pillow
+torch
+transformers
+huggingface_hub
+timm
