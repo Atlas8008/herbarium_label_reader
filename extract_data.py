@@ -1,11 +1,11 @@
 import os
 import hydra
-import torch
-import argparse
+import hashlib
 import pandas as pd
 
 from PIL import Image
-from omegaconf import DictConfig
+from dotenv import load_dotenv
+from omegaconf import DictConfig, OmegaConf
 
 from llms import GeminiModel
 from preprocessors import GroundingDinoPreprocessor
@@ -14,44 +14,15 @@ from preprocessors import GroundingDinoPreprocessor
 Image.MAX_IMAGE_PIXELS = None
 
 
+OmegaConf.register_new_resolver("shorthash", lambda s: hashlib.md5(s.encode()).hexdigest()[:8])
 
-def analyze_with_gemini(image, prompt, gemini_model):
-    """Sends an image and prompt to Gemini and returns the text response."""
-    print("  -> Analyzing with Gemini...")
-    try:
-        response = gemini_model.generate_content([prompt, image])
-        # Handle cases where the response might be blocked
-        if not response.parts:
-             print("  -> Gemini response was empty or blocked.")
-             return "Error: Gemini response blocked"
-        return response.text
-    except Exception as e:
-        print(f"  -> An error occurred with the Gemini API: {e}")
-        return f"Error: {e}"
-
-def parse_gemini_response(text_response):
-    """
-    Parses a key-value string from Gemini into a dictionary.
-    Assumes format: "Key1: Value1, Key2: Value2, ..."
-    """
-    parsed_data = {}
-    if "Error:" in text_response:
-        parsed_data['gemini_error'] = text_response
-        return parsed_data
-
-    try:
-        parts = [p.strip() for p in text_response.split(',')]
-        for part in parts:
-            if ':' in part:
-                key, value = part.split(':', 1)
-                parsed_data[key.strip()] = value.strip()
-    except Exception as e:
-        print(f"  -> Could not parse Gemini response: '{text_response}'. Storing raw text.")
-        parsed_data['raw_gemini_response'] = text_response
-    return parsed_data
-
-@hydra.main(version_base=None, config_path="config", config_name="main_config")
+@hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg: DictConfig):
+    # Load environment variables
+    load_dotenv()
+
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+
     preprocessor = None
 
     print("Loading models...")
@@ -62,56 +33,75 @@ def main(cfg: DictConfig):
             box_threshold=gd_cfg.box_threshold,
             text_threshold=gd_cfg.text_threshold,
             device=gd_cfg.device,
+            multi_output=True,
         )
 
-    if cfg.llm.model_name.startswith('gemini'):
+    if cfg.llm.model_name.startswith("gemini"):
         llm = GeminiModel(model_name=cfg.llm.model_name)
     else:
         raise ValueError(f"Unsupported LLM model: {cfg.llm.model_name}")
 
     # Read image paths from the input file
-    with open(cfg.image_list, 'r') as f:
-        image_paths = [line.strip() for line in f if line.strip()]
+    with open(cfg.image_list, "r") as f:
+        image_paths = f.read().strip().split("\n")[cfg.image_index:cfg.image_index + cfg.n_images]
 
-    all_results = []
+    results = []
 
     print(f"\nStarting processing for {len(image_paths)} images...")
+    print(image_paths)
 
     for i, image_path in enumerate(image_paths):
         print(f"\n[{i+1}/{len(image_paths)}] Processing: {image_path}")
 
-        image = Image.open(image_path).convert("RGB")
+        image = Image.open(os.path.join(cfg.dataset_path, image_path)).convert("RGB")
 
         if preprocessor is not None:
             image = preprocessor.preprocess(image, cfg.preprocessors.grounding_dino.prompt)
 
+            if not isinstance(image, list):
+                image = [image]  # Ensure image is a list for consistent handling
 
-        # Step 2: Analyze with Gemini
-        gemini_text = analyze_with_gemini(processed_image, args.gemini_prompt, gemini_model)
+            if cfg.preprocessors.grounding_dino.log_output:
+                image_log_path = os.path.join(output_dir, "dino")
+                os.makedirs(image_log_path, exist_ok=True)
 
-        # Step 3: Parse the Gemini response
-        parsed_results = parse_gemini_response(gemini_text)
 
-        # Step 4: Collate all data for this image
-        final_row = {
-            'source_image': image_path,
-            'dino_prompt': args.dino_prompt or 'N/A',
-            'bounding_box_found': str(bounding_box) if bounding_box else 'None',
+                for idx, img in enumerate(image):
+                    output_image_path = os.path.join(image_log_path, f"{os.path.basename(image_path)}_{idx}.jpg")
+                    img.save(output_image_path)
+                    print(f"Preprocessed image saved to: {output_image_path}")
+        else:
+            image = [image]
+
+        output = llm.prompt(
+            image + [
+            cfg.llm.prompt,
+        ])
+
+        output_dict = {
+            "source_image": image_path,
         }
-        final_row.update(parsed_results)
-        all_results.append(final_row)
+
+        print(f"LLM output: {output}")
+
+        for line in output.split("\n"):
+            k, v = line.split(":", 1)
+
+            k = k.strip()
+            v = v.strip()
+
+            output_dict[k] = v
+
+        results.append(output_dict)
 
     # Final Step: Create a DataFrame and save to CSV
-    if all_results:
-        df = pd.DataFrame(all_results)
-        # Reorder columns to have source image first
-        cols = ['source_image', 'dino_prompt', 'bounding_box_found'] + [c for c in df.columns if c not in ['source_image', 'dino_prompt', 'bounding_box_found']]
-        df = df[cols]
+    df = pd.DataFrame(results)
 
-        df.to_csv(args.output_csv, index=False)
-        print(f"\nProcessing complete. Results saved to {args.output_csv}")
-    else:
-        print("\nNo images were processed.")
+    os.makedirs(output_dir, exist_ok=True)
+    output_csv = os.path.join(output_dir, "extracted_data.csv")
+
+    df.to_csv(output_csv, index=False)
+    print(f"\nProcessing complete. Results saved to {output_csv}")
 
 if __name__ == "__main__":
     main()

@@ -1,27 +1,40 @@
+dataset_path: ${oc.env:HOME}/datasets/herbarium_scans_senckenberg
 image_list: data/image_list.txt
-output_dir: data/output
+image_index: 0
+n_images: 5
 llm:
-  model_name: "gemini-pro-vision"
-  max_new_tokens: 512
-  temperature: 0.2
+  model_name: "gemini-2.5-flash"
   prompt: "
     You are an expert in identifying and extracting information from herbarium labels.
-    Your task is to read the text from the provided images and extract relevant information such as:
-    - Scientific name
-    - Common name
+    Your task is to read the handwritten text from the provided images and extract relevant information such as:
+    - Species name
     - Collection date
     - Collector's name
     - Location
     - Notes
 
-    Please provide the extracted information in a structured format as linewise key value pairs.
+    Please provide the extracted information in a structured format as linewise key value pairs separated by ': ' without any text before and after this information. Provide the collector's name in the format 'First Last' (e.g., 'John Doe').
+    Format dates like 'YYYY-MM-DD' and ensure that the species name is in a standard format (e.g., 'Genus species').
     If any information is not available, leave it blank.
     "
 preprocessors:
   grounding_dino:
     model_name: "IDEA-Research/grounding-dino-tiny"
-    enabled: false
+    enabled: true
     box_threshold: 0.25
     text_threshold: 0.3
-    prompt: "Identify the herbarium label in the image"
-    device: "cuda" # Use "cuda" for GPU or "cpu" for CPU
+    prompt: "Identify the herbarium label in the image. The label is typically a rectangular area containing handwritten text or printed text and contains information like the species name, collection date, collector's name, location, and notes. Sometimes the text is not on a separate label but directly on the image. Focus on extracting the text from this area."
+    device: "cpu" # Use "cuda" for GPU or "cpu" for CPU
+    log_output: true
+
+
+hydra:
+  sweep:
+    dir: outputs/${now:%Y-%m-%d_%H-%M-%S}-${hydra.job.name}
+    subdir: ${hydra:job.override_dirname},llm.prompt=${shorthash:${llm.prompt}},grounding_dino.prompt=${shorthash:${preprocessors.grounding_dino.prompt}}
+  job:
+    config:
+      override_dirname:
+        exclude_keys:
+          - llm.prompt
+          - preprocessors.grounding_dino.prompt

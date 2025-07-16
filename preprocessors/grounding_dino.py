@@ -5,13 +5,14 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 
 
 class GroundingDinoPreprocessor:
-    def __init__(self, model_name: str, device: str = 'cuda', box_threshold: float = 0.4, text_threshold: float = 0.3):
+    def __init__(self, model_name: str, device: str = 'cuda', box_threshold: float = 0.4, text_threshold: float = 0.3, multi_output: bool = False):
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name)
         self.device = device
 
         self.box_threshold = box_threshold
         self.text_threshold = text_threshold
+        self.multi_output = multi_output
 
         self.model.to(device)
 
@@ -33,14 +34,23 @@ class GroundingDinoPreprocessor:
 
         # Find the box with the highest score
         if results[0]["scores"].numel() > 0:
-            best_box_index = results[0]["scores"].argmax()
-            box = results[0]["boxes"][best_box_index].tolist()
+            if not self.multi_output:
+                best_box_index = results[0]["scores"].argmax()
+                box = results[0]["boxes"][best_box_index].tolist()
 
-            print(f"  -> Object found with score: {results[0]['scores'][best_box_index].item():.2f}")
+                print(f"  -> Object found with score: {results[0]['scores'][best_box_index].item():.2f}")
 
-            # Crop the image to the bounding box
-            cropped_image = image.crop(box)
-            return cropped_image
+                # Crop the image to the bounding box
+                cropped_image = image.crop(box)
+                return cropped_image
+            else:
+                print(f"  -> Found {len(results[0]['boxes'])} objects with scores above the threshold.")
+                cropped_images = []
+                for i in range(len(results[0]["boxes"])):
+                    box = results[0]["boxes"][i].tolist()
+                    cropped_image = image.crop(box)
+                    cropped_images.append(cropped_image)
+                return cropped_images
         else:
             print("  -> No object found by Grounding DINO. Using full image.")
             return image
