@@ -7,11 +7,49 @@ def default_string_distance(a: str, b: str) -> float:
     # Returns similarity ratio (1.0 = identical, 0.0 = completely different)
     return SequenceMatcher(None, str(a), str(b)).ratio()
 
+def compare_species_name(extracted: str, gt: str) -> float:
+    # Compare only the two first words of the species name
+    extracted_words = extracted.split()
+    gt_words = gt.split()
+
+    extracted = " ".join(extracted_words[:2])
+    gt = " ".join(gt_words[:2])
+
+    return default_string_distance(extracted, gt)
+
+def compare_collection_date(extracted: str, gt: str) -> float:
+    # Only compare the year
+    extracted_year = extracted.split("-")[0] # "2023-08-17" -> "2023"
+    gt_year = gt.split(" ")[-1] # "17. August 1951" -> "1951"
+
+    return default_string_distance(extracted_year, gt_year)
+
+def compare_collectors_name(extracted: str, gt: str) -> float:
+    # Only compare the last name
+    extracted_last_name = extracted.split()[-1]  # Get the last word as last name
+    gt_last_name = gt.split()[-1]  # Get the last word as last name
+
+    return default_string_distance(extracted_last_name, gt_last_name)
+
+def compare_location(extracted: str, gt: str) -> float:
+    # Compare complete location strings, but format gt similarly to extracted
+
+    return default_string_distance(extracted, gt)
+
+
+metric_fns = {
+    "Species name": compare_species_name,
+    "Collection date": compare_collection_date,
+    "Collector's name": compare_collectors_name,
+    #"Country/State": default_string_distance,  # Excluded, because not contained in every image
+    "Location": compare_location,
+    "Region": default_string_distance,  # Assuming region is a simple string comparison
+}
+
 def compare_tables(
     extracted_csv: str,
     ground_truth_csv: str,
     column_map: Dict[str, str],
-    metric_fn: Callable[[str, str], float] = default_string_distance,
     output_csv: str = None,
 ):
     # Load CSVs
@@ -20,7 +58,11 @@ def compare_tables(
 
     # Index both tables by source_image
     extracted = extracted.set_index("source_image")
-    ground_truth = ground_truth.set_index("source_image")
+    ground_truth = ground_truth.set_index(column_map["source_image"])
+
+    column_map = column_map.copy()
+
+    del column_map["source_image"]  # Remove source_image from mapping
 
     # Filter columns
     extracted_cols = list(column_map.keys())
@@ -33,18 +75,13 @@ def compare_tables(
     ground_truth.columns = extracted_cols  # Rename for comparison
 
     # Compute metrics
-    results = []
-    for img in common_images:
-        row = {"source_image": img}
-        for col in extracted_cols:
-            val1 = extracted.at[img, col]
-            val2 = ground_truth.at[img, col]
-            row[f"{col}_score"] = metric_fn(val1, val2)
-            row[f"{col}_extracted"] = val1
-            row[f"{col}_ground_truth"] = val2
-        results.append(row)
+    results = {}
 
-    df_results = pd.DataFrame(results)
+    for col in metric_fns:
+        results[f"{col}_similarity"] = extracted[col].combine(ground_truth[col], metric_fns[col]).mean()
+
+    df_results = pd.Series(results)
+    df_results["mean"] = df_results.mean()
     if output_csv:
         df_results.to_csv(output_csv, index=False)
     return df_results
@@ -54,11 +91,18 @@ if __name__ == "__main__":
     parser.add_argument("--extracted_csv", required=True, help="Path to extracted data CSV.")
     parser.add_argument("--ground_truth_csv", required=True, help="Path to ground truth CSV.")
     parser.add_argument("--output_csv", default=None, help="Path to save comparison results.")
-    parser.add_argument("--column_map", required=True, help="Column mapping as comma-separated pairs, e.g. 'Species name:species,Collector's name:collector'")
     args = parser.parse_args()
 
     # Parse column_map argument
-    column_map = dict(pair.split(":") for pair in args.column_map.split(","))
+    column_map = {
+        "source_image": "Bildname",
+        "Species name": "Wissenschaftlicher Name",
+        "Collection date": "Sammeldatum",
+        "Collector's name": "Sammler",
+        "Country/State": "Geographische_Zuordnung",
+        "Location": "Fundort",
+        "Region": "Naturraum",
+    }
 
     df = compare_tables(
         args.extracted_csv,
