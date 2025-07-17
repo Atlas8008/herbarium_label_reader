@@ -1,4 +1,5 @@
 import os
+import math
 import hydra
 import hashlib
 import pandas as pd
@@ -13,7 +14,7 @@ from preprocessors import GroundingDinoPreprocessor
 # Suppress a specific PIL warning about decompression bombs
 Image.MAX_IMAGE_PIXELS = None
 
-
+OmegaConf.register_new_resolver("sanitize", lambda x: x.replace(" ", "_").replace("/", ".").replace("\\", ""))
 OmegaConf.register_new_resolver("shorthash", lambda s: hashlib.md5(s.encode()).hexdigest()[:8])
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
@@ -37,7 +38,10 @@ def main(cfg: DictConfig):
         )
 
     if cfg.llm.model_name.startswith("gemini"):
-        llm = GeminiModel(model_name=cfg.llm.model_name)
+        llm = GeminiModel(
+            model_name=cfg.llm.model_name,
+            rate_limit_wait=cfg.rate_limit_wait
+        )
     else:
         raise ValueError(f"Unsupported LLM model: {cfg.llm.model_name}")
 
@@ -50,49 +54,63 @@ def main(cfg: DictConfig):
     print(f"\nStarting processing for {len(image_paths)} images...")
     print(image_paths)
 
-    for i, image_path in enumerate(image_paths):
-        print(f"\n[{i+1}/{len(image_paths)}] Processing: {image_path}")
+    for batch_idx in range(0, int(math.ceil(len(image_paths) / cfg.batch_size))):
+        images = []
 
-        image = Image.open(os.path.join(cfg.dataset_path, image_path)).convert("RGB")
+        batch_image_paths = image_paths[batch_idx * cfg.batch_size:(batch_idx + 1) * cfg.batch_size]
 
-        if preprocessor is not None:
-            image = preprocessor.preprocess(image, cfg.preprocessors.grounding_dino.prompt)
+        for i, image_path in enumerate(batch_image_paths):
+            #print(f"\n[{i+1}/{len(image_paths)}] Processing: {image_path}")
+            print(f"\nProcessing: {image_path}")
 
-            if not isinstance(image, list):
-                image = [image]  # Ensure image is a list for consistent handling
+            image = Image.open(os.path.join(cfg.dataset_path, image_path)).convert("RGB")
 
-            if cfg.preprocessors.grounding_dino.log_output:
-                image_log_path = os.path.join(output_dir, "dino")
-                os.makedirs(image_log_path, exist_ok=True)
+            if preprocessor is not None:
+                image = preprocessor.preprocess(image, cfg.preprocessors.grounding_dino.prompt)
+
+                if not isinstance(image, list):
+                    image = [image]  # Ensure image is a list for consistent handling
+
+                if cfg.preprocessors.grounding_dino.log_output:
+                    image_log_path = os.path.join(output_dir, "dino")
+                    os.makedirs(image_log_path, exist_ok=True)
 
 
-                for idx, img in enumerate(image):
-                    output_image_path = os.path.join(image_log_path, f"{os.path.basename(image_path)}_{idx}.jpg")
-                    img.save(output_image_path)
-                    print(f"Preprocessed image saved to: {output_image_path}")
-        else:
-            image = [image]
+                    for idx, img in enumerate(image):
+                        output_image_path = os.path.join(image_log_path, f"{os.path.basename(image_path)}_{idx}.jpg")
+                        img.save(output_image_path)
+                        print(f"Preprocessed image saved to: {output_image_path}")
+            else:
+                image = [image]
 
-        output = llm.prompt(
-            image + [
-            cfg.llm.prompt,
-        ])
+            images.append(image)
 
-        output_dict = {
-            "source_image": image_path,
-        }
+        prompt = [cfg.llm.prompt, cfg.batch_prompt]
 
-        print(f"LLM output: {output}")
+        for i, img_set in enumerate(images):
+            prompt.append(f"\n\nTask {i + 1}")
+            prompt.extend(img_set)
 
-        for line in output.split("\n"):
-            k, v = line.split(":", 1)
+        outputs = llm.prompt(
+            prompt,
+        )
 
-            k = k.strip()
-            v = v.strip()
+        for image_path, output in zip(batch_image_paths, outputs.split("\n\n")):
+            output_dict = {
+                "source_image": image_path,
+            }
 
-            output_dict[k] = v
+            print(f"LLM output: {output}")
 
-        results.append(output_dict)
+            for line in output.split("\n"):
+                k, v = line.split(":", 1)
+
+                k = k.strip()
+                v = v.strip()
+
+                output_dict[k] = v
+
+            results.append(output_dict)
 
     # Final Step: Create a DataFrame and save to CSV
     df = pd.DataFrame(results)

@@ -1,7 +1,10 @@
 dataset_path: ${oc.env:HOME}/datasets/herbarium_scans_senckenberg
-image_list: data/image_list.txt
+rate_limit_wait: true
+image_list: data/handwritten.txt
 image_index: 0
-n_images: 5
+n_images: 100
+batch_size: 5
+batch_prompt: "In the following, you will receive a batch of identification tasks. Each task consists of at least one image. All tasks are independent from each other. For each task, identify the specified information above and provide the results in the mentioned format. Separate the results of each task with two newlines. Do not include any additional text or explanations."
 llm:
   model_name: "gemini-2.5-flash"
   prompt: "
@@ -10,11 +13,16 @@ llm:
     - Species name
     - Collection date
     - Collector's name
+    - Country/State
     - Location
+    - Region
     - Notes
 
-    Please provide the extracted information in a structured format as linewise key value pairs separated by ': ' without any text before and after this information. Provide the collector's name in the format 'First Last' (e.g., 'John Doe').
+    Please provide the extracted information in a structured format as linewise key value pairs separated by ': ' without any text before and after this information.
+    Provide the collector's name in the format 'First Last' (e.g., 'John Doe').
     Format dates like 'YYYY-MM-DD' and ensure that the species name is in a standard format (e.g., 'Genus species').
+    Provide the country/state in a structured format like 'Country: State. Translate terms, especially the country, to German if necessary.
+    Provide the location in a structured format like 'Town/City, Location Details'.
     If any information is not available, leave it blank.
     "
 preprocessors:
@@ -31,7 +39,10 @@ preprocessors:
 hydra:
   sweep:
     dir: outputs/${now:%Y-%m-%d_%H-%M-%S}-${hydra.job.name}
-    subdir: ${hydra:job.override_dirname},llm.prompt=${shorthash:${llm.prompt}},grounding_dino.prompt=${shorthash:${preprocessors.grounding_dino.prompt}}
+    subdir: ${sanitize:${hydra:job.override_dirname}}
+    #,llm.prompt=${shorthash:${llm.prompt}},grounding_dino.prompt=${shorthash:${preprocessors.grounding_dino.prompt}}
+  run:
+    dir: outputs/${hydra.job.name}-${now:%Y-%m-%d_%H-%M-%S}
   job:
     config:
       override_dirname:
