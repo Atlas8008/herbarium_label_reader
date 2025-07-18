@@ -8,7 +8,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 
-from llms import GeminiModel
+from llms import GeminiModel, OpenAIModel, GroqModel
 from preprocessors import GroundingDinoPreprocessor
 
 # Suppress a specific PIL warning about decompression bombs
@@ -35,12 +35,23 @@ def main(cfg: DictConfig):
             text_threshold=gd_cfg.text_threshold,
             device=gd_cfg.device,
             multi_output=True,
+            max_outputs=gd_cfg.max_outputs,
         )
 
     if cfg.llm.model_name.startswith("gemini"):
         llm = GeminiModel(
             model_name=cfg.llm.model_name,
-            rate_limit_wait=cfg.rate_limit_wait
+            rate_limit_wait=cfg.rate_limit_wait,
+        )
+    elif cfg.llm.model_name.startswith("gpt"):
+        llm = OpenAIModel(
+            model_name=cfg.llm.model_name,
+            rate_limit_wait=cfg.rate_limit_wait,
+        )
+    elif cfg.llm.model_name.startswith("llama"):
+        llm = GroqModel(
+            model_name=cfg.llm.model_name,
+            rate_limit_wait=cfg.rate_limit_wait,
         )
     else:
         raise ValueError(f"Unsupported LLM model: {cfg.llm.model_name}")

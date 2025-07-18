@@ -27,12 +27,10 @@ class GeminiModel(LLMBase):
     Gemini class for interacting with the Gemini LLM.
     This class extends the LLMBase class and implements the prompt method.
     """
-    def __init__(self, model_name: str = 'gemini-pro-vision', rate_limit_wait: bool = False):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.client = genai.Client()
-        self.model_name = model_name
-        self.rate_limit_wait = rate_limit_wait
 
     def prompt(self, prompt: list) -> str:
         """
@@ -53,6 +51,8 @@ class GeminiModel(LLMBase):
             for d in prompt
         ]
 
+        n_retries = self.retries_on_error
+
         while True:
             try:
                 response = self.client.models.generate_content(
@@ -62,8 +62,16 @@ class GeminiModel(LLMBase):
                 break  # Exit loop if successful
             except genai.errors.ClientError as e:
                 if self.rate_limit_wait and e.code == 429:
-                    print("Rate limit exceeded. Waiting for 24 hours before retrying...")
-                    time.sleep(24 * 60 * 60)  # Wait for 24 hours
+                    print("Rate limit exceeded. Waiting for 1 hour before retrying...")
+                    time.sleep(60)
+                    continue
+                else:
+                    raise e
+            except genai.errors.ServerError as e:
+                if n_retries > 0:
+                    print(f"Internal server error: {e}. Retrying in 30 seconds...")
+                    time.sleep(30)
+                    n_retries -= 1
                     continue
                 else:
                     raise e
