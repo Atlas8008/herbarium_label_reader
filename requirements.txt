@@ -1,4 +1,6 @@
 google-genai
+openai
+groq
 python-dotenv
 pandas
 Pillow
