@@ -31,6 +31,7 @@ preprocessors:
     enabled: true
     box_threshold: 0.25
     text_threshold: 0.3
+    max_outputs: null
     prompt: "Identify the herbarium label in the image. The label is typically a rectangular area containing handwritten text or printed text and contains information like the species name, collection date, collector's name, location, and notes. Sometimes the text is not on a separate label but directly on the image. Focus on extracting the text from this area."
     device: "cpu" # Use "cuda" for GPU or "cpu" for CPU
     log_output: true

@@ -5,7 +5,7 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 
 
 class GroundingDinoPreprocessor:
-    def __init__(self, model_name: str, device: str = 'cuda', box_threshold: float = 0.4, text_threshold: float = 0.3, multi_output: bool = False):
+    def __init__(self, model_name: str, device: str = 'cuda', box_threshold: float = 0.4, text_threshold: float = 0.3, multi_output: bool = False, max_outputs: int = None):
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name)
         self.device = device
@@ -13,6 +13,7 @@ class GroundingDinoPreprocessor:
         self.box_threshold = box_threshold
         self.text_threshold = text_threshold
         self.multi_output = multi_output
+        self.max_outputs = max_outputs
 
         self.model.to(device)
 
@@ -45,12 +46,20 @@ class GroundingDinoPreprocessor:
                 return cropped_image
             else:
                 print(f"  -> Found {len(results[0]['boxes'])} objects with scores above the threshold.")
+                # Sort boxes by score
+                sorted_boxes = sorted(
+                    zip(results[0]["boxes"], results[0]["scores"]),
+                    key=lambda x: x[1],
+                    reverse=True,
+                )
+                sorted_boxes = list(zip(*sorted_boxes))[0]  # Get only the boxes
+
                 cropped_images = []
-                for i in range(len(results[0]["boxes"])):
-                    box = results[0]["boxes"][i].tolist()
+                for i in range(len(sorted_boxes)):
+                    box = sorted_boxes[i].tolist()
                     cropped_image = image.crop(box)
                     cropped_images.append(cropped_image)
-                return cropped_images
+                return cropped_images if self.max_outputs is None else cropped_images[:self.max_outputs]
         else:
             print("  -> No object found by Grounding DINO. Using full image.")
             return image
