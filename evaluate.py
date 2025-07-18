@@ -9,25 +9,25 @@ def default_string_distance(a: str, b: str) -> float:
 
 def compare_species_name(extracted: str, gt: str) -> float:
     # Compare only the two first words of the species name
-    extracted_words = extracted.split()
-    gt_words = gt.split()
-
-    extracted = " ".join(extracted_words[:2])
-    gt = " ".join(gt_words[:2])
+    extracted = " ".join(extracted.split(" ")[:2]) if extracted else ""
+    gt = " ".join(gt.split(" ")[:2]) if gt else ""
 
     return default_string_distance(extracted, gt)
 
 def compare_collection_date(extracted: str, gt: str) -> float:
     # Only compare the year
-    extracted_year = extracted.split("-")[0] # "2023-08-17" -> "2023"
-    gt_year = gt.split(" ")[-1] # "17. August 1951" -> "1951"
+    extracted_year = str(extracted).split("-")[0] # "2023-08-17" -> "2023"
+    gt_year = str(gt).split(" ")[-1] # "17. August 1951" -> "1951"
 
     return default_string_distance(extracted_year, gt_year)
 
 def compare_collectors_name(extracted: str, gt: str) -> float:
     # Only compare the last name
-    extracted_last_name = extracted.split()[-1]  # Get the last word as last name
-    gt_last_name = gt.split()[-1]  # Get the last word as last name
+    # Get the last word as last name
+    extracted_last_name = extracted.split(" ")[-1] if extracted else ""
+
+    # Get the last word as last name
+    gt_last_name = gt.split(" ")[-1] if gt else ""
 
     return default_string_distance(extracted_last_name, gt_last_name)
 
@@ -53,8 +53,8 @@ def compare_tables(
     output_csv: str = None,
 ):
     # Load CSVs
-    extracted = pd.read_csv(extracted_csv)
-    ground_truth = pd.read_csv(ground_truth_csv)
+    extracted = pd.read_csv(extracted_csv, keep_default_na=False)
+    ground_truth = pd.read_csv(ground_truth_csv, keep_default_na=False)
 
     # Index both tables by source_image
     extracted = extracted.set_index("source_image")
