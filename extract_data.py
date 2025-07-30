@@ -1,4 +1,5 @@
 import os
+import re
 import math
 import hydra
 import hashlib
@@ -10,6 +11,18 @@ from omegaconf import DictConfig, OmegaConf
 
 from llms import GeminiModel, OpenAIModel, GroqModel
 from preprocessors import GroundingDinoPreprocessor
+
+
+task_parser = re.compile(r".*Task (\d+).*")
+
+def maybe_resize(img, max_size):
+    """
+    Resize the image if it exceeds the max size.
+    """
+    if img.size[0] > max_size or img.size[1] > max_size:
+        img.thumbnail((max_size, max_size))
+
+    return img
 
 # Suppress a specific PIL warning about decompression bombs
 Image.MAX_IMAGE_PIXELS = None
@@ -94,34 +107,78 @@ def main(cfg: DictConfig):
             else:
                 image = [image]
 
+            image = [maybe_resize(img, cfg.img_max_size) for img in image]
+
             images.append(image)
 
-        prompt = [cfg.llm.prompt, cfg.batch_prompt]
+        prompt = [cfg.llm.prompt]
+
+        if cfg.batch_size > 1:
+            prompt.append(cfg.batch_prompt)
 
         for i, img_set in enumerate(images):
-            prompt.append(f"\n\nTask {i + 1}")
+            if cfg.batch_size > 1:
+                prompt.append(f"\n\nTask {i + 1}")
+
             prompt.extend(img_set)
 
-        outputs = llm.prompt(
-            prompt,
-        )
+        n_retries = 5
 
-        for image_path, output in zip(batch_image_paths, outputs.split("\n\n")):
-            output_dict = {
-                "source_image": image_path,
-            }
+        while True:
+            try:
+                outputs = llm.prompt(
+                    prompt,
+                )
 
-            print(f"LLM output: {output}")
+                print("Full LLM output: ", outputs)
 
-            for line in output.split("\n"):
-                k, v = line.split(":", 1)
+                sub_results = []
+                batch_idx = 0 # Keep track of the current batch index, in case the model specifies a task number
 
-                k = k.strip()
-                v = v.strip()
+                for output in outputs.split("\n\n"):
+                    output = output.strip()
 
-                output_dict[k] = v
+                    print(f"LLM output: {output}")
 
-            results.append(output_dict)
+                    lines = output.split("\n")
+
+                    # Check, if model specified a task number
+                    match = task_parser.match(lines[0])
+                    if match: # If the model specified a task number
+                        # Use the specified batch index
+                        # This allows the model to specify which task it is processing
+                        batch_idx = int(match.group(1)) - 1
+                        print(f"Specified batch index: {batch_idx}")
+                        lines = lines[1:]  # Skip the first line
+
+                    image_path = batch_image_paths[batch_idx]
+
+                    output_dict = {
+                        "source_image": image_path,
+                    }
+
+                    for line in lines:
+                        k, v = line.split(":", 1)
+
+                        k = k.strip()
+                        v = v.strip()
+
+                        output_dict[k] = v
+
+                    sub_results.append(output_dict)
+                    batch_idx += 1
+
+                results.extend(sub_results)
+                break  # Exit retry loop if successful
+            except Exception as e:
+                print(f"Error processing batch {batch_idx + 1}: {e}")
+                if n_retries > 0:
+                    n_retries -= 1
+                    print(f"Retrying... {n_retries} retries left.")
+                else:
+                    print("Max retries reached.")
+                    print(e) # Re-raise the exception after max retries
+                    return
 
     # Final Step: Create a DataFrame and save to CSV
     df = pd.DataFrame(results)

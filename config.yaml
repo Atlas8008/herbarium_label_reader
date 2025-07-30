@@ -4,12 +4,13 @@ image_list: data/handwritten.txt
 image_index: 0
 n_images: 100
 batch_size: 5
+img_max_size: 4096
 batch_prompt: "In the following, you will receive a batch of identification tasks. Each task consists of at least one image. All tasks are independent from each other. For each task, identify the specified information above and provide the results in the mentioned format. Separate the results of each task with two newlines. Do not include any additional text or explanations."
 llm:
   model_name: "gemini-2.5-flash"
   prompt: "
     You are an expert in identifying and extracting information from herbarium labels.
-    Your task is to read the handwritten text from the provided images and extract relevant information such as:
+    Your task is to read the handwritten or printed text from the provided images and extract relevant information such as:
     - Species name
     - Collection date
     - Collector's name
@@ -31,7 +32,7 @@ preprocessors:
     enabled: true
     box_threshold: 0.25
     text_threshold: 0.3
-    max_outputs: null
+    max_outputs: 5 # Use only the five most confident boxes
     prompt: "Identify the herbarium label in the image. The label is typically a rectangular area containing handwritten text or printed text and contains information like the species name, collection date, collector's name, location, and notes. Sometimes the text is not on a separate label but directly on the image. Focus on extracting the text from this area."
     device: "cpu" # Use "cuda" for GPU or "cpu" for CPU
     log_output: true
