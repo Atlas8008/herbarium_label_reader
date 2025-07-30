@@ -10,3 +10,4 @@ huggingface_hub
 timm
 gradio
 hydra-core
+hydra-joblib-launcher
