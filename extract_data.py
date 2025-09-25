@@ -37,6 +37,13 @@ def main(cfg: DictConfig):
 
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
 
+    os.makedirs(output_dir, exist_ok=True)
+    output_csv = os.path.join(output_dir, "extracted_data.csv")
+
+    if os.path.exists(output_csv):
+        print(f"Output file {output_csv} already exists. Exiting.")
+        return
+
     preprocessor = None
 
     print("Loading models...")
@@ -122,7 +129,7 @@ def main(cfg: DictConfig):
 
             prompt.extend(img_set)
 
-        n_retries = 5
+        n_retries = 20
 
         while True:
             try:
@@ -135,7 +142,13 @@ def main(cfg: DictConfig):
                 sub_results = []
                 batch_idx = 0 # Keep track of the current batch index, in case the model specifies a task number
 
-                for output in outputs.split("\n\n"):
+                output_blocks = outputs.split("\n\n")
+
+                # If there are more output blocks than images, we just take the first len(images) blocks
+                if len(output_blocks) > len(images):
+                    output_blocks = output_blocks[:len(images)]
+
+                for output in output_blocks:
                     output = output.strip()
 
                     print(f"LLM output: {output}")
@@ -182,9 +195,6 @@ def main(cfg: DictConfig):
 
     # Final Step: Create a DataFrame and save to CSV
     df = pd.DataFrame(results)
-
-    os.makedirs(output_dir, exist_ok=True)
-    output_csv = os.path.join(output_dir, "extracted_data.csv")
 
     df.to_csv(output_csv, index=False)
     print(f"\nProcessing complete. Results saved to {output_csv}")
