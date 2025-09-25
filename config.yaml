@@ -7,7 +7,7 @@ batch_size: 5
 img_max_size: 4096
 batch_prompt: "In the following, you will receive a batch of identification tasks. Each task consists of at least one image. All tasks are independent from each other. For each task, identify the specified information above and provide the results in the mentioned format. Separate the results of each task with two newlines. Do not include any additional text or explanations."
 llm:
-  model_name: "gemini-2.5-flash"
+  model_name: "gemini-2.5-pro"
   prompt: "
     You are an expert in identifying and extracting information from herbarium labels.
     Your task is to read the handwritten or printed text from the provided images and extract relevant information such as:
