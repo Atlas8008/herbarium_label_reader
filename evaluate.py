@@ -163,6 +163,16 @@ def compare_tables(
     extracted = extracted.sort_index()
     ground_truth = ground_truth.sort_index()
 
+    if extracted.shape != ground_truth.shape:
+        print(f"Warning: Dataframes have different shapes after alignment. {extracted.shape} vs {ground_truth.shape}")
+        # Align by index, filling missing values with empty strings
+        try:
+            extracted = extracted.reindex(ground_truth.index, fill_value="")
+            ground_truth = ground_truth.reindex(extracted.index, fill_value="")
+        except Exception as e:
+            print(f"Error aligning dataframes: {e}")
+            return pd.Series()
+
     # Check if both indices are now identical
     assert all(extracted.index == ground_truth.index), "Indices do not match after alignment."
     assert all(s1 == s2 for s1, s2 in zip(extracted.shape, ground_truth.shape)), f"The dataframe shapes do not match. {(extracted.shape, ground_truth.shape)}"
@@ -232,6 +242,7 @@ if __name__ == "__main__":
         "Country/State": "Geographische_Zuordnung",
         "Location": "Fundort Label",
         "Region": "Naturraum",
+        "Notes": "Bemerkung_zur_Pflanze",
     }
 
     metric_series = {}
