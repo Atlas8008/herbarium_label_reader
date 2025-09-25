@@ -59,6 +59,7 @@ class GroqModel(LLMBase):
     def _get_response(self, prepared_prompt: dict) -> str:
         return self.client.chat.completions.create(
             model=self.model_name,
+            temperature=self.temperature,
             **prepared_prompt,
         ).choices[0].message.content
 

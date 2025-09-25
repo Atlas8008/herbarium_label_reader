@@ -43,6 +43,9 @@ class GeminiModel(LLMBase):
     def _get_response(self, prepared_prompt: dict) -> str:
         return self.client.models.generate_content(
             model=self.model_name,
+            config={
+                "temperature": self.temperature,
+            },
             **prepared_prompt,
         ).text
 
