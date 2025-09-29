@@ -1,4 +1,6 @@
 outputs/
+.gradio/
+tmp/
 
 
 # Byte-compiled / optimized / DLL files

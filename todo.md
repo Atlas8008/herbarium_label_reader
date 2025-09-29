@@ -8,3 +8,8 @@
 - Script for evaluating
 + Build web interface for inference
 - Evaluation of call variance?
+
+
+- Adapted prompt for printed labels?
+- Remove batch prompt for single requests?
+- Single zeroshot crop
