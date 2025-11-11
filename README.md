@@ -7,7 +7,7 @@ A project for digitizing herbarium specimen labels by combining modern visual gr
 - Zero-shot label localization using Grounding DINO
 - Visual + language extraction using LLMs/LLVMs (Gemini, OpenAI GPTs, LLaMA-family models served via the Groq API)
 - Single-image interactive processing and bulk/batch processing
-- Exportable structured outputs (CSV/JSON) and side-by-side comparison for evaluation
+- Exportable structured outputs (CSV/JSON)
 - Hydra-based experiment orchestration and reproducible output directories
 
 ## Project Structure
