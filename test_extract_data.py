@@ -357,7 +357,7 @@ class TestLoadImagePaths(unittest.TestCase):
 
             result = load_image_paths(mock_cfg)
 
-            self.assertEqual(result, ["image1.jpg", "image2.jpg", "image3.jpg"])
+            self.assertEqual(result, ["image_list/image1.jpg", "image_list/image2.jpg", "image_list/image3.jpg"])
 
     def test_load_image_paths_with_offset(self):
         """Test loading image paths with offset."""
@@ -376,7 +376,7 @@ class TestLoadImagePaths(unittest.TestCase):
 
             result = load_image_paths(mock_cfg)
 
-            self.assertEqual(result, ["image2.jpg", "image3.jpg"])
+            self.assertEqual(result, ["image_list/image2.jpg", "image_list/image3.jpg"])
 
     def test_load_image_paths_partial(self):
         """Test loading fewer images than available."""
@@ -395,7 +395,7 @@ class TestLoadImagePaths(unittest.TestCase):
 
             result = load_image_paths(mock_cfg)
 
-            self.assertEqual(result, ["image1.jpg", "image2.jpg"])
+            self.assertEqual(result, ["image_list/image1.jpg", "image_list/image2.jpg"])
 
 
 class TestPreprocessImage(unittest.TestCase):
