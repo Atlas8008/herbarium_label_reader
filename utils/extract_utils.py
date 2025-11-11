@@ -63,7 +63,7 @@ class ExtractionPipeline:
 
     def initialize_llm(self) -> object:
         """
-        Initialize the LLM/LLVM model based on configuration.
+        Initialize the LLM model based on configuration.
 
         This method is flexible and tries multiple constructor signatures to handle
         different model implementations (Gemini, OpenAI, Groq).
@@ -174,11 +174,12 @@ class ExtractionPipeline:
 
         Args:
             outputs: Raw string output from the LLM
-            batch_image_paths: List of image paths in the current batch
-            num_images: Number of images in the batch
+            batch_image_paths: List of image paths (or provided image names) in the current batch
+            num_images: Number of images/tasks expected in the batch
+            add_image_names (bool): If True, include a "source_image" key mapping to the image name/path
 
         Returns:
-            List of dictionaries with extracted information
+            List[Dict[str, str]]: List of dictionaries with extracted information for each task/image
         """
         sub_results = []
         batch_idx = 0
@@ -237,9 +238,13 @@ class ExtractionPipeline:
 
         Args:
             images: A single PIL Image, a path (str/Path), or a list of such items.
+            image_names (Optional[List[str]]): Optional list of names to associate with each image
+            add_image_names (bool): If True, parsed dictionaries will include a "source_image" key
 
         Returns:
-            List[Dict[str, str]]: Parsed results from the LLM for each input image (or task block).
+            Tuple[List[Dict[str, str]], List[PIL.Image.Image]]: A tuple where the first element is a list of
+            parsed result dictionaries (one per task/image) and the second is a flat list of preprocessed images
+            produced by the pipeline.
         """
         # Normalize input into a list
         if images is None:

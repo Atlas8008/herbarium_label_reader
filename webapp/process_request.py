@@ -24,6 +24,24 @@ def create_pipeline(
     config,
     batch_size = 1,
 ):
+    """
+    Create and return an ExtractionPipeline instance with the specified configuration.
+
+    Args:
+        prompt (str): System prompt for the LLM model
+        use_grounding_dino (bool): Whether to enable Grounding DINO preprocessing
+        box_threshold (float): Confidence threshold for Grounding DINO bounding boxes
+        text_threshold (float): Text threshold for Grounding DINO
+        grounding_prompt (str): Prompt for Grounding DINO object detection
+        llm_model_name (str): Name of the LLM model ('gemini', 'gpt', 'llama')
+        resize_size (int): Maximum image size for resizing
+        temperature (float): Temperature parameter for LLM generation
+        config: Base configuration object to extend with webapp-specific settings
+        batch_size (int): Number of images to process in a batch (default: 1)
+
+    Returns:
+        ExtractionPipeline: Configured pipeline instance ready for image processing
+    """
     # Build a small config including the requested llm model, temperature and prompt
     cfg_dict = {
         "preprocessors": {
@@ -55,15 +73,15 @@ def process_image(
     *args,
     **kwargs,
 ):
-    """Process an image using an LLVM model.
+    """Process an image using an LLM model.
 
     This function handles image processing through optional object detection (Grounding DINO) and subsequent
-    text analysis using various LLVM models (Gemini, GPT, or Llama). It includes error handling and retry logic
-    for LLVM processing.
+    text analysis using various LLM models (Gemini, GPT, or Llama). It includes error handling and retry logic
+    around LLM calls.
 
     Args:
         image: Input image to be processed (numpy array or PIL Image)
-        prompt (str): The prompt to be sent to the LLM model
+        prompt (str): The prompt to be sent to the LLM model (passed through *args/**kwargs)
         use_grounding_dino (bool): Whether to use Grounding DINO for object detection
         box_threshold (float): Confidence threshold for Grounding DINO bounding boxes
         text_threshold (float): Text threshold for Grounding DINO
@@ -75,11 +93,11 @@ def process_image(
 
     Returns:
         tuple: (dict, list)
-            - dict: Either processed output as key-value pairs or error message
-            - list: List of processed images (original or detected regions)
+            - dict: The first parsed result (a mapping of extracted fields) or an error/raw placeholder
+            - list: List of processed / preprocessed images returned by the pipeline
 
-    Raises:
-        Various exceptions are caught and returned as error messages in the output dictionary
+    Notes:
+        All exceptions are caught and returned as an error dict instead of being raised.
     """
     try:
         if image is None:
@@ -106,6 +124,26 @@ def process_batch(
     progress=gr.Progress(),
     **kwargs,
 ):
+    """
+    Process a batch of images through the extraction pipeline and save results to file.
+
+    This function processes multiple images in batches, handles errors gracefully, and
+    outputs results in the specified format (CSV or JSON).
+
+    Args:
+        images (list): List of image file paths or identifiers
+        batch_size (int): Number of images to process in each batch
+        output_format (str): Output format ('csv' or 'json')
+        *args: Additional positional arguments passed to create_pipeline
+        progress: Gradio progress callback for UI updates
+        **kwargs: Additional keyword arguments passed to create_pipeline
+
+    Returns:
+        tuple: (results, processed_images, output_path)
+            - results (list): List of dictionaries with extracted data from each image
+            - processed_images (list): Preprocessed/detected regions from the pipeline
+            - output_path (str): Path to the saved results file
+    """
     if not images:
         return {"error": "No images provided"}, None, None
 
