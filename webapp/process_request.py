@@ -1,20 +1,18 @@
 import os
-import time
 import traceback
 import pandas as pd
 from PIL import Image
 import gradio as gr
-from llms import GeminiModel
-from preprocessors import GroundingDinoPreprocessor
+from omegaconf import OmegaConf
 
-def maybe_resize(img, max_size):
-    """Resize the image if it exceeds the max size."""
-    if img.size[0] > max_size or img.size[1] > max_size:
-        img.thumbnail((max_size, max_size))
-    return img
+# Use shared extraction pipeline
+from utils.extract_utils import ExtractionPipeline
 
-def process_image(
-    image,
+def _open_image(image_file):
+    """Open an image file and convert it to RGB."""
+    return Image.open(image_file.name).convert("RGB")
+
+def create_pipeline(
     prompt,
     use_grounding_dino,
     box_threshold,
@@ -24,76 +22,89 @@ def process_image(
     resize_size,
     temperature,
     config,
+    batch_size = 1,
 ):
+    # Build a small config including the requested llm model, temperature and prompt
+    cfg_dict = {
+        "preprocessors": {
+            "grounding_dino": {
+                "enabled": bool(use_grounding_dino),
+                "model_name": getattr(config.preprocessors.grounding_dino, "model_name", "IDEA-Research/grounding-dino-tiny"),
+                "box_threshold": box_threshold,
+                "text_threshold": text_threshold,
+                "prompt": grounding_prompt,
+                "log_output": False,
+                "device": "cpu",
+                "max_outputs": getattr(config.preprocessors.grounding_dino, "max_outputs", 5),
+            }
+        },
+        "img_max_size": resize_size,
+        "llm": {"model_name": llm_model_name, "temperature": temperature, "prompt": prompt},
+        "rate_limit_wait": getattr(config, "rate_limit_wait", True),
+        "batch_size": batch_size,
+        "batch_prompt": config.batch_prompt if batch_size != 1 else "",
+    }
+
+    cfg = OmegaConf.create(cfg_dict)
+
+    return ExtractionPipeline(cfg)
+
+
+def process_image(
+    image,
+    *args,
+    **kwargs,
+):
+    """Process an image using an LLVM model.
+
+    This function handles image processing through optional object detection (Grounding DINO) and subsequent
+    text analysis using various LLVM models (Gemini, GPT, or Llama). It includes error handling and retry logic
+    for LLVM processing.
+
+    Args:
+        image: Input image to be processed (numpy array or PIL Image)
+        prompt (str): The prompt to be sent to the LLM model
+        use_grounding_dino (bool): Whether to use Grounding DINO for object detection
+        box_threshold (float): Confidence threshold for Grounding DINO bounding boxes
+        text_threshold (float): Text threshold for Grounding DINO
+        grounding_prompt (str): Prompt for Grounding DINO object detection
+        llm_model_name (str): Name of the LLM model to use ('gemini', 'gpt', or 'llama')
+        resize_size (int): Size to resize the image to (if needed)
+        temperature (float): Temperature parameter for LLM generation
+        config: Configuration object containing model settings
+
+    Returns:
+        tuple: (dict, list)
+            - dict: Either processed output as key-value pairs or error message
+            - list: List of processed images (original or detected regions)
+
+    Raises:
+        Various exceptions are caught and returned as error messages in the output dictionary
+    """
     try:
         if image is None:
             return {"error": "No image provided"}, []
 
-        image = maybe_resize(image, resize_size)
+        if not isinstance(image, list):
+            image = [image]
 
-        preprocessor = None
-        if use_grounding_dino:
-            try:
-                preprocessor = GroundingDinoPreprocessor(
-                    model_name=config.preprocessors.grounding_dino.model_name,
-                    box_threshold=box_threshold,
-                    text_threshold=text_threshold,
-                    device="cpu",
-                    multi_output=True,
-                )
-                processed_images = preprocessor.preprocess(image, grounding_prompt)
-                if not isinstance(processed_images, list):
-                    processed_images = [processed_images]
-            except Exception as e:
-                return {"error": f"Grounding DINO error: {str(e)}"}, [image]
-        else:
-            processed_images = [image]
+        pipeline = create_pipeline(*args, **kwargs)
 
-        if llm_model_name.startswith("gemini"):
-            llm = GeminiModel(model_name=llm_model_name, temperature=temperature)
-        elif llm_model_name.startswith("gpt"):
-            from llms import OpenAIModel
-            llm = OpenAIModel(model_name=llm_model_name, temperature=temperature)
-        elif llm_model_name.startswith("llama"):
-            from llms import GroqModel
-            llm = GroqModel(model_name=llm_model_name, temperature=temperature)
-        else:
-            return {"error": "Unsupported LLM model selected."}, processed_images
+        # Call the pipeline directly with the image(s). The pipeline returns parsed results.
+        parsed_results, preprocessed_imgs = pipeline(image, add_image_names=False)
 
-        n_retries = 5
-        while True:
-            try:
-                output = llm.prompt(processed_images + [prompt])
-                output_dict = {}
-                for line in output.split("\n"):
-                    if ":" in line:
-                        k, v = line.split(":", 1)
-                        output_dict[k.strip()] = v.strip()
-                return output_dict, processed_images
-            except Exception as e:
-                if n_retries > 0:
-                    n_retries -= 1
-                    print(f"LLM error: {str(e)}, retrying... {n_retries} retries left. Retrying in 60 seconds.")
-                    time.sleep(60)  # Wait before retrying
-                else:
-                    return {"error": f"LLM error after all retries: {str(e)}"}, processed_images
+        return (parsed_results[0] if parsed_results else {"raw": None}), preprocessed_imgs
 
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}, [image] if image else []
 
 def process_batch(
     images,
-    prompt,
-    use_grounding_dino,
-    box_threshold,
-    text_threshold,
-    grounding_prompt,
-    llm_model_name,
-    resize_size,
-    temperature,
+    batch_size,
     output_format,
-    config,
-    progress = gr.Progress(),
+    *args,
+    progress=gr.Progress(),
+    **kwargs,
 ):
     if not images:
         return {"error": "No images provided"}, None, None
@@ -101,29 +112,31 @@ def process_batch(
     results = []
     processed_images = []
 
-    for idx, image in enumerate(progress.tqdm(images, desc="Processing images")):
+    # Process images in batches
+    if batch_size <= 0:
+        batch_size = len(images)
+
+    pipeline = create_pipeline(
+        *args,
+        **kwargs,
+        batch_size=batch_size,
+    )
+
+    for batch_start in progress.tqdm(range(0, len(images), batch_size), desc="Processing images"):
+        batch_end = min(batch_start + batch_size, len(images))
+        batch_images = images[batch_start:batch_end]
+
+        image_names = [os.path.basename(bi) for bi in batch_images]
+
+        batch_images = [_open_image(image) for image in batch_images]
+
         try:
-            image = Image.open(image.name).convert("RGB")
+            result, imgs = pipeline(batch_images, image_names=image_names)
 
-            #progress.update(f"Processing image {idx + 1}/{len(images)}")
-
-            result, imgs = process_image(
-                image,
-                prompt,
-                use_grounding_dino,
-                box_threshold,
-                text_threshold,
-                grounding_prompt,
-                llm_model_name,
-                resize_size,
-                temperature,
-                config,
-            )
-            results.append(result)
+            results.extend(result)
             processed_images.extend(imgs)
         except Exception as e:
             results.append({"error": f"Error processing image: {str(e)}"})
-            print(f"Error processing image {idx + 1}: {e}")
             traceback.print_exc()
 
     df = pd.DataFrame(results)
