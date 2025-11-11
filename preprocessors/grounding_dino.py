@@ -28,7 +28,7 @@ class GroundingDinoPreprocessor:
         results = self.processor.post_process_grounded_object_detection(
             outputs,
             inputs.input_ids,
-            box_threshold=self.box_threshold, # Confidence threshold for the box
+            threshold=self.box_threshold, # Confidence threshold for the box
             text_threshold=self.text_threshold, # Confidence threshold for the label
             target_sizes=[image.size[::-1]] # (height, width)
         )
