@@ -12,7 +12,7 @@ class LLMBase(ABC):
         self.retries_on_error = retries_on_error
         self.temperature = temperature
 
-    def prompt(self, prompt: list) -> str:
+    def prompt(self, prompt: list, on_error_fn=None) -> str:
         prepared_prompt = self._prepare_prompt(prompt)
         n_retries = self.retries_on_error
         backoff = 60
@@ -24,6 +24,8 @@ class LLMBase(ABC):
             except self.CLIENT_ERROR as e:
                 if self.rate_limit_wait and self.get_api_error_status_code(e) == 429:
                     print(f"Rate limit exceeded. Waiting for {backoff} seconds before retrying...")
+                    if on_error_fn:
+                        on_error_fn(e, f"Rate limit exceeded. Waiting for {backoff} seconds before retrying...")
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 3600)  # Exponential backoff
                     continue
@@ -31,7 +33,9 @@ class LLMBase(ABC):
                     raise e
             except self.SERVER_ERROR as e:
                 if n_retries > 0:
-                    print(f"Internal server error: {e}. Retrying in {backoff} seconds...")
+                    print(f"Internal server error: {e}. Retrying in {backoff} seconds... ({n_retries - 1} left)")
+                    if on_error_fn:
+                        on_error_fn(e, f"Internal server error: {e}. Retrying in {backoff} seconds... ({n_retries - 1} left)")
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 3600)  # Exponential backoff
 

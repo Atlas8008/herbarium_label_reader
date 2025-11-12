@@ -109,7 +109,9 @@ def process_image(
         pipeline = create_pipeline(*args, **kwargs)
 
         # Call the pipeline directly with the image(s). The pipeline returns parsed results.
-        parsed_results, preprocessed_imgs = pipeline(image, add_image_names=False)
+        parsed_results, preprocessed_imgs = pipeline(image, add_image_names=False,
+            on_error_fn=lambda e, msg: gr.Info(msg, duration=120),
+        )
 
         return (parsed_results[0] if parsed_results else {"raw": None}), preprocessed_imgs
 
@@ -169,7 +171,11 @@ def process_batch(
         batch_images = [_open_image(image) for image in batch_images]
 
         try:
-            result, imgs = pipeline(batch_images, image_names=image_names)
+            result, imgs = pipeline(
+                batch_images,
+                image_names=image_names,
+                on_error_fn=lambda e, msg: gr.Info(msg),
+            )
 
             results.extend(result)
             processed_images.extend(imgs)

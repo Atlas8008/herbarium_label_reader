@@ -232,7 +232,7 @@ class ExtractionPipeline:
         df.to_csv(output_csv, index=False)
 
 
-    def __call__(self, images: List[Image.Image], image_names=None, add_image_names=True):
+    def __call__(self, images: List[Image.Image], image_names=None, add_image_names=True, on_error_fn=None):
         """
         Process an image or list of images through the pipeline and return parsed output.
 
@@ -240,6 +240,7 @@ class ExtractionPipeline:
             images: A single PIL Image, a path (str/Path), or a list of such items.
             image_names (Optional[List[str]]): Optional list of names to associate with each image
             add_image_names (bool): If True, parsed dictionaries will include a "source_image" key
+            on_error_fn (Optional[Callable[[Exception, str], None]]): Optional function to call on errors with signature (Exception, str)
 
         Returns:
             Tuple[List[Dict[str, str]], List[PIL.Image.Image]]: A tuple where the first element is a list of
@@ -313,7 +314,7 @@ class ExtractionPipeline:
 
             while True:
                 try:
-                    outputs = self.llm.prompt(prompt)
+                    outputs = self.llm.prompt(prompt, on_error_fn=on_error_fn)
                     parsed = self.parse_llm_output(
                         outputs,
                         batch_image_names,
@@ -324,7 +325,10 @@ class ExtractionPipeline:
                     break
                 except Exception as e:
                     n_retries -= 1
-                    if n_retries > 0 and getattr(self.cfg, "rate_limit_wait", False):
+                    if n_retries > 0:
+                        print(f"Error during LLM call: {e}. Retrying... ({n_retries} attempts left)")
+                        if on_error_fn:
+                            on_error_fn(e, f"Error during LLM call: {e}. Retrying... ({n_retries} attempts left)")
                         # Backoff before retrying
                         time.sleep(1)
                         continue
