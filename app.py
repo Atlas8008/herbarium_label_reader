@@ -10,15 +10,21 @@ Image.MAX_IMAGE_PIXELS = None
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg):
-    llm_choices = ["gemini-2.5-pro", "gemini-2.5-flash"]
+    llm_choices = [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+    ]
 
     def get_common_inputs():
         return [
             gr.Textbox(label="LLM Prompt", value=cfg.llm.prompt, lines=7),
-            gr.Checkbox(label="Enable Grounding Dino", value=cfg.preprocessors.grounding_dino.enabled),
+            gr.Checkbox(label="Enable Label Detection", value=cfg.preprocessors.grounding_dino.enabled),
             gr.Slider(label="Box Threshold", minimum=0.0, maximum=1.0, value=cfg.preprocessors.grounding_dino.box_threshold, step=0.01),
             gr.Slider(label="Text Threshold", minimum=0.0, maximum=1.0, value=cfg.preprocessors.grounding_dino.text_threshold, step=0.01),
-            gr.Textbox(label="Grounding Dino Prompt", value=cfg.preprocessors.grounding_dino.prompt, lines=7),
+            gr.Textbox(label="Label Detection Prompt", value=cfg.preprocessors.grounding_dino.prompt, lines=7),
             gr.Dropdown(label="LLM Model", choices=llm_choices, value=cfg.llm.model_name),
             gr.Slider(label="Resize Size (px)", minimum=512, maximum=4096, value=4096, step=64, info="If the image is larger than this, the longer side will be resized to fit the specified resolution, keeping the aspect ratio. Higher resolutions typically generate better results, but can increase traffic and cost."),
             gr.Slider(label="Temperature", minimum=0.0, maximum=2.0, value=getattr(cfg.llm, "temperature", 0.7), step=0.01, info="Determines the determinism of the LLVM, where higher values mean that the model is more \"creative\" (values up to 2.0), while lower values result in the model being more deterministic and reproducible (down to 0)."),
@@ -40,7 +46,7 @@ def main(cfg):
         fn=lambda *args: process_batch(*args, config=cfg),
         inputs=[
             gr.File(file_count="multiple", label="Upload Images", file_types=["image"]),
-            gr.Number(label="Batch Size", value=0, precision=0, minimum=0, step=1, info="Number of images to process in a batch. Set to 0 to process all images at once."),
+            gr.Number(label="Batch Size", value=1, precision=0, minimum=0, step=1, info="Number of images to process in a batch. Set to 0 to process all images at once. Bigger batches can be faster, but require more memory and can be more inaccurate, especially for large batches."),
             gr.Radio(choices=["csv", "json"], label="Output Format", value="csv"),
         ] + get_common_inputs(),
         outputs=[
